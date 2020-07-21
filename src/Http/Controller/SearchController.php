@@ -2,55 +2,43 @@
 
 namespace App\Http\Controller;
 
+use App\Domain\Course\Repository\TechnologyRepository;
 use App\Infrastructure\Search\SearchInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
-
-use App\Domain\Course\Entity\Technology;
-use App\Http\Normalizer\TechnologyPathNormalizer;
-
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 
 class SearchController extends AbstractController
 {
     /**
-     * @Route("/search", name="search")
+     * @Route("/recherche", name="search")
      */
     public function search(
-      Request $request,
-      SearchInterface $search,
-      TechnologyPathNormalizer $technologyPathNormalizer
+        Request $request,
+        SearchInterface $search,
+        NormalizerInterface $normalizer,
+        TechnologyRepository $technologyRepository
     ): Response {
         $q = $request->query->get('q');
 
-        // Si q n'est pas vide
-        if ( !empty( $q ) ) {
+        if (!empty($q)) {
+            $technology = $technologyRepository->findByName($q);
 
-          // on commence par chercher une techno correspondante
-          $technology = $this->getDoctrine()
-              ->getRepository(Technology::class)
-              ->findOneBy( ['name' => $q] );
+            if (null !== $technology) {
+                /** @var array{'path': string, "params": string[]} $path */
+                $path = $normalizer->normalize($technology, 'path');
 
-          // si ça matche on fait la redirection vers la techno en normalisant le path
-          if ( !empty( $technology ) ) {
-            return $this->redirectToRoute(
-              $technologyPathNormalizer->normalize( $technology )['path'],
-              $technologyPathNormalizer->normalize( $technology )['params']
-            );
-          }
-
-          // si ça ne matche pas on fait la recherche typesense
-          else {
-            return $this->render('pages/search.html.twig', [
-                'q' => $q,
-                'results' => $search->search($q, [])['hits'],
-            ]);
-          }
+                return $this->redirectToRoute(
+                    $path['path'],
+                    $path['params']
+                );
+            }
         }
 
-        // et enfin si q est vide on redirige vers une page d'erreur
-        else {
-          return $this->redirectToRoute( 'path_page_derreur' );
-        }
+        return $this->render('pages/search.html.twig', [
+            'q' => $q,
+            'results' => $search->search($q, [])['hits'],
+        ]);
     }
 }
